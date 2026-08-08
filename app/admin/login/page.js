@@ -226,7 +226,3 @@ export default function AdminLoginPage() {
     </main>
   );
 }
-      </section>
-    </main>
-  );
-}
