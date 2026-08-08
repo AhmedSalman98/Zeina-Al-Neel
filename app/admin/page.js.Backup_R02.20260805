@@ -1,0 +1,858 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase, uploadImage } from "../../lib/supabase";
+import { useAuth } from "../../components/AuthContext";
+import PageShell from "../../components/PageShell";
+import { useCurrency } from "../../components/CurrencyContext";
+import { mainCategories, products as staticProducts } from "../../data/products";
+import {
+  PlusCircle, Package, Trash2, Edit, Save, X,
+  LayoutDashboard, TrendingUp, AlertTriangle,
+  ShoppingCart, Users, ChevronRight, BarChart3, Clock,
+  Upload, Wand2, CheckCircle2, Sparkles
+} from "lucide-react";
+
+export default function AdminDashboard() {
+  const { user, isAdmin, loading: authLoading } = useAuth();
+  const { formatPrice, market } = useCurrency();
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [coupons, setCoupons] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [showAddCoupon, setShowAddCoupon] = useState(false);
+
+  async function loadAdminData() {
+    setLoading(true);
+    try {
+      const [prodRes, orderRes, custRes, coupRes] = await Promise.all([
+        supabase.from('products').select('*').order('created_at', { ascending: false }),
+        supabase.from('orders').select('*').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('coupons').select('*').order('created_at', { ascending: false })
+      ]);
+
+      if (prodRes.error) console.error("Products Load Error:", prodRes.error);
+      if (orderRes.error) console.error("Orders Load Error:", orderRes.error);
+      if (custRes.error) console.error("Profiles Load Error:", custRes.error);
+      if (coupRes.error) console.error("Coupons Load Error:", coupRes.error);
+
+      if (prodRes.data) setProducts(prodRes.data);
+      else setProducts(staticProducts);
+
+      if (orderRes.data) setOrders(orderRes.data);
+      if (custRes.data) setCustomers(custRes.data);
+      if (coupRes.data) setCoupons(coupRes.data);
+
+    } catch (error) {
+      console.error("Critical Admin Data Load Error:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const [couponForm, setCouponCouponForm] = useState({
+    code: "",
+    percent: 10,
+    max_amount: 50,
+    starts_at: new Date().toISOString().split('T')[0],
+    expires_at: ""
+  });
+
+  async function handleAddCoupon(e) {
+    e.preventDefault();
+    try {
+      const { error } = await supabase.from('coupons').insert([{
+        code: couponForm.code.trim().toUpperCase(),
+        discount_percent: Number(couponForm.percent),
+        max_discount_amount: Number(couponForm.max_amount),
+        starts_at: couponForm.starts_at || new Date().toISOString(),
+        expires_at: couponForm.expires_at || null,
+        is_active: true
+      }]);
+
+      if (error) {
+        alert("فشل في إضافة الكوبون: " + error.message);
+      } else {
+        alert("تم إضافة الكوبون بنجاح! 🎉");
+        setShowAddCoupon(false);
+        setCouponCouponForm({
+          code: "", percent: 10, max_amount: 50,
+          starts_at: new Date().toISOString().split('T')[0], expires_at: ""
+        });
+        loadAdminData();
+      }
+    } catch (err) {
+      alert("حدث خطأ غير متوقع");
+      console.error(err);
+    }
+  }
+
+  async function toggleCoupon(id, currentState) {
+    await supabase.from('coupons').update({ is_active: !currentState }).eq('id', id);
+    loadAdminData();
+  }
+
+  async function deleteCoupon(id) {
+    if (confirm("هل أنتِ متأكدة من حذف هذا الكوبون نهائياً؟")) {
+      const { error } = await supabase.from('coupons').delete().eq('id', id);
+      if (!error) loadAdminData();
+      else alert("فشل الحذف: " + error.message);
+    }
+  }
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [viewingOrder, setViewingOrder] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [updatingStockId, setUpdatingStockId] = useState(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [modifiedStock, setModifiedStock] = useState({}); // { productId: newStock }
+  const [aiLoading, setAiLoading] = useState(false);
+  const [toast, setToast] = useState({ show: false, msg: "" });
+
+  const initialForm = {
+    name: "",
+    category: mainCategories[0].name,
+    subcategory: mainCategories[0].subcategories[0],
+    price: "",
+    old_price: "",
+    discount: 0,
+    stock: 10,
+    image: "",
+    images: [],
+    is_new: true,
+    description: "",
+    colors: []
+  };
+
+  const [form, setForm] = useState(initialForm);
+
+  useEffect(() => {
+    if (!authLoading && isAdmin) {
+      loadAdminData();
+    }
+  }, [authLoading, isAdmin]);
+
+  async function updateOrderStatus(orderId, newStatus) {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: newStatus })
+      .eq('id', orderId);
+
+    if (!error) {
+      alert("تم تحديث حالة الطلب");
+      loadAdminData();
+    }
+  }
+
+  // ميزة اقتراح اسم للمنتج
+  function suggestName() {
+    const suggestions = {
+      "تياب": ["توب حرير سوداني ملكي", "توب مشجر ألوان زاهية", "توب راتي مطبوع فاخر"],
+      "دراعات": ["دراعة استقبال مشغولة", "دراعة خليجية مطرزة", "دراعة قطن مريحة"],
+      "عطور سودانية": ["خمرة محلب أصلية", "بخور صندل ملكي", "طقم عطور التراث"],
+      "إكسسوارات": ["عقد ذهبي تراثي", "طقم جدل مطلي", "خاتم فضة أحجار كريمة"]
+    };
+    const list = suggestions[form.subcategory] || suggestions[form.category] || ["منتج جديد فاخر"];
+    const randomName = list[Math.floor(Math.random() * list.length)];
+    setForm({...form, name: randomName});
+  }
+
+  // ميزة رفع الصور (دعم صور متعددة)
+  async function handleImageUpload(e) {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    setUploading(true);
+    const uploadedUrls = [];
+
+    for (const file of files) {
+      const url = await uploadImage(file, 'Public Bucket');
+      if (url) uploadedUrls.push(url);
+    }
+
+    if (uploadedUrls.length > 0) {
+      setForm(prev => ({
+        ...prev,
+        images: [...(prev.images || []), ...uploadedUrls],
+        image: prev.image || uploadedUrls[0]
+      }));
+      alert(`تم رفع ${uploadedUrls.length} صور بنجاح! ✅`);
+    } else {
+      alert("فشل رفع الصور، يُرجى المحاولة مرة أخرى.");
+    }
+    setUploading(false);
+  }
+
+  function removeImage(url) {
+    setForm(prev => {
+      const newImages = prev.images.filter(img => img !== url);
+      return {
+        ...prev,
+        images: newImages,
+        image: prev.image === url ? (newImages[0] || "") : prev.image
+      };
+    });
+  }
+
+  async function handleAddProduct(e) {
+    e.preventDefault();
+    if (!form.image && (!form.images || form.images.length === 0)) return alert("يرجى إرفاق صورة للمنتج أولاً");
+
+    setLoading(true);
+    const productData = {
+      ...form,
+      price: parseFloat(form.price),
+      old_price: form.old_price ? parseFloat(form.old_price) : null,
+      discount: parseInt(form.discount) || 0,
+      stock: parseInt(form.stock) || 0,
+      updated_at: new Date()
+    };
+
+    let error;
+    if (editingProduct) {
+      const { error: updateError } = await supabase
+        .from('products')
+        .update(productData)
+        .eq('id', editingProduct.id);
+      error = updateError;
+    } else {
+      const { error: insertError } = await supabase
+        .from('products')
+        .insert([productData]);
+      error = insertError;
+    }
+
+    if (!error) {
+      setShowAddForm(false);
+      setEditingProduct(null);
+      alert(editingProduct ? "تم تحديث المنتج بنجاح! ✨" : "تم نشر المنتج بنجاح! 🚀");
+      loadAdminData();
+      setForm(initialForm);
+    } else {
+      alert("حدث خطأ: " + error.message);
+    }
+    setLoading(false);
+  }
+
+  function handleEdit(product) {
+    setEditingProduct(product);
+    setForm({
+      name: product.name || "",
+      category: product.category || mainCategories[0].name,
+      subcategory: product.subcategory || "",
+      price: product.price || "",
+      old_price: product.old_price || "",
+      discount: product.discount || 0,
+      stock: product.stock || 0,
+      image: product.image || "",
+      images: product.images || (product.image ? [product.image] : []),
+      is_new: product.is_new ?? true,
+      description: product.description || "",
+      colors: product.colors || []
+    });
+    setShowAddForm(true);
+  }
+
+  function closeForm() {
+    setShowAddForm(false);
+    setEditingProduct(null);
+    setForm(initialForm);
+  }
+
+  async function deleteProduct(id) {
+    if (confirm("هل أنتِ متأكدة من حذف هذا المنتج؟")) {
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (!error) loadAdminData();
+    }
+  }
+
+  function showToast(msg) {
+    setToast({ show: true, msg });
+    setTimeout(() => setToast({ show: false, msg: "" }), 3000);
+  }
+
+  async function handleBulkSave() {
+    const ids = Object.keys(modifiedStock);
+    if (ids.length === 0) return;
+
+    setBulkSaving(true);
+    let successCount = 0;
+
+    try {
+      for (const id of ids) {
+        const newVal = parseInt(modifiedStock[id]);
+        console.log(`Updating product ${id} to stock ${newVal}...`);
+
+        const { error } = await supabase
+          .from('products')
+          .update({ stock: newVal })
+          .eq('id', id);
+
+        if (!error) {
+          successCount++;
+        } else {
+          console.error(`Error updating product ${id}:`, error.message, error);
+        }
+      }
+
+      if (successCount === ids.length) {
+        showToast("تم حفظ جميع التغيرات بنجاح ✅");
+        setModifiedStock({});
+        loadAdminData();
+      } else {
+        alert(`تم حفظ ${successCount} من أصل ${ids.length} تعديلات. يرجى مراجعة Console للأخطاء.`);
+      }
+    } catch (err) {
+      console.error("Bulk save exception:", err);
+      alert("حدث خطأ غير متوقع أثناء الحفظ.");
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
+  function handleLocalStockChange(id, value) {
+    const val = Math.max(0, parseInt(value) || 0);
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, stock: val } : p));
+    setModifiedStock(prev => ({ ...prev, [id]: val }));
+  }
+
+  async function generateAiName() {
+    if (!form.image) return alert("يرجى رفع صورة المنتج أولاً ليقوم الذكاء الاصطناعي بتحليلها");
+
+    setAiLoading(true);
+    try {
+      // simulated AI Vision call - in production, this would call /api/admin/generate-name
+      // which uses Gemini 1.5 Flash/Pro with the image URL/Base64
+      const prompt = `Analyze this product image for an luxury Sudanese fashion brand ('زينة النيل'). Identify item type, colors, pattern, and generate an elegant Arabic title.`;
+
+      const response = await fetch("/api/admin/generate-name", {
+        method: "POST",
+        body: JSON.stringify({ image: form.image, prompt }),
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setForm({ ...form, name: result.name });
+      } else {
+        // Fallback to the random suggestion if API fails or is not implemented
+        suggestName();
+      }
+    } catch (error) {
+      console.error("AI Analysis Error:", error);
+      suggestName();
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+
+  if (authLoading) return <div className="page-loading">جاري التحقق...</div>;
+  if (!isAdmin) return <div className="unauthorized"><h1>غير مسموح لكِ بالدخول</h1><a href="/admin/login">تسجيل الدخول للإدارة</a></div>;
+
+  const selectedCat = mainCategories.find(c => c.name === form.category);
+
+  return (
+    <PageShell>
+      <div className="admin-layout">
+        <aside className="admin-sidebar">
+          <div className="sidebar-brand"><LayoutDashboard size={24} /><span>زينة النيل Pro</span></div>
+          <nav className="sidebar-nav">
+            <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}><BarChart3 size={20}/> نظرة عامة</button>
+            <button className={activeTab === 'products' ? 'active' : ''} onClick={() => setActiveTab('products')}><Package size={20}/> إدارة المنتجات</button>
+            <button className={activeTab === 'orders' ? 'active' : ''} onClick={() => setActiveTab('orders')}><ShoppingCart size={20}/> الطلبات <span className="badge">{orders.filter(o => o.status === 'Pending').length}</span></button>
+            <button className={activeTab === 'coupons' ? 'active' : ''} onClick={() => setActiveTab('coupons')}><Sparkles size={20}/> الكوبونات</button>
+            <button className={activeTab === 'customers' ? 'active' : ''} onClick={() => setActiveTab('customers')}><Users size={20}/> العملاء</button>
+          </nav>
+        </aside>
+
+        <main className="admin-main">
+          <header className="admin-topbar">
+            <h2>{activeTab === 'overview' ? 'الإحصائيات' : activeTab === 'products' ? 'المخزون' : activeTab === 'orders' ? 'إدارة الطلبات' : activeTab === 'coupons' ? 'إدارة الكوبونات' : 'العملاء'}</h2>
+            <div className="topbar-actions">
+              {activeTab === 'coupons' && (
+                <button className="btn-primary" onClick={() => setShowAddCoupon(true)}><PlusCircle size={18}/> إنشاء كوبون</button>
+              )}
+              {activeTab === 'products' && (
+                <>
+                  <button
+                    className={`btn-save-bulk mr-10 ${Object.keys(modifiedStock).length > 0 ? 'active' : ''}`}
+                    onClick={handleBulkSave}
+                    disabled={bulkSaving || Object.keys(modifiedStock).length === 0}
+                  >
+                    {bulkSaving ? <Clock size={18} className="animate-spin"/> : <Save size={18}/>}
+                    حفظ التغيرات {Object.keys(modifiedStock).length > 0 && `(${Object.keys(modifiedStock).length})`}
+                  </button>
+                  <button className="btn-primary" onClick={() => setShowAddForm(true)}><PlusCircle size={18}/> إضافة منتج</button>
+                </>
+              )}
+            </div>
+          </header>
+
+          {toast.show && <div className="admin-toast">{toast.msg}</div>}
+
+          {activeTab === 'overview' && (
+            <div className="overview-container">
+              <div className="dashboard-grid">
+                <div className="stat-box gold"><div className="stat-info"><span>إجمالي المبيعات</span><strong>{formatPrice(orders.reduce((acc, curr) => acc + Number(curr.total_price), 0))}</strong></div><TrendingUp size={32}/></div>
+                <div className="stat-box navy"><div className="stat-info"><span>إجمالي الطلبات</span><strong>{orders.length}</strong></div><ShoppingCart size={32}/></div>
+                <div className="stat-box"><div className="stat-info"><span>عدد المنتجات</span><strong>{products.length}</strong></div><Package size={32}/></div>
+              </div>
+
+              <div className="overview-secondary-grid mt-20">
+                <div className="table-card">
+                  <div className="card-header">
+                    <h3>أحدث الطلبات</h3>
+                    <button onClick={() => setActiveTab('orders')}>عرض الكل</button>
+                  </div>
+                  <table className="admin-table">
+                    <thead><tr><th>العميل</th><th>المبلغ</th><th>الحالة</th></tr></thead>
+                    <tbody>
+                      {orders.slice(0, 5).map(o => (
+                        <tr key={o.id}>
+                          <td>{o.full_name}</td>
+                          <td>{formatPrice(o.total_price)}</td>
+                          <td><span className={`status-pill ${o.status?.toLowerCase()}`}>{o.status}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="table-card">
+                  <div className="card-header">
+                    <h3>منتجات قاربت على النفاد</h3>
+                    <button onClick={() => setActiveTab('products')}>إدارة المخزون</button>
+                  </div>
+                  <table className="admin-table">
+                    <thead><tr><th>المنتج</th><th>المخزون</th></tr></thead>
+                    <tbody>
+                      {products.filter(p => p.stock < 5).slice(0, 5).map(p => (
+                        <tr key={p.id}>
+                          <td>{p.name}</td>
+                          <td><span className="stock-badge low">{p.stock} قطع</span></td>
+                        </tr>
+                      ))}
+                      {products.filter(p => p.stock < 5).length === 0 && (
+                        <tr><td colSpan="2" className="text-center">كل المنتجات متوفرة بكثرة ✅</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'products' && (
+            <div className="products-view">
+              {showAddForm && (
+                <div className="modal-overlay">
+                  <div className="admin-modal">
+                    <div className="modal-header">
+                      <h3>{editingProduct ? "تعديل المنتج" : "إضافة منتج احترافي"}</h3>
+                      <button onClick={closeForm}><X/></button>
+                    </div>
+                    <form onSubmit={handleAddProduct} className="admin-form-grid">
+
+                      <div className="full-width">
+                        <label>صور المنتج (يمكنك رفع عدة صور)</label>
+                        <div className="image-upload-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '10px', marginTop: '10px' }}>
+                          {(form.images || []).map((imgUrl, idx) => (
+                            <div key={idx} className="preview-container" style={{ position: 'relative', height: '100px', border: '1px solid #eee', borderRadius: '8px', overflow: 'hidden' }}>
+                              <img src={imgUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <button
+                                type="button"
+                                onClick={() => removeImage(imgUrl)}
+                                style={{ position: 'absolute', top: '5px', left: '5px', background: '#ef4444', color: '#fff', border: 0, width: '20px', height: '20px', borderRadius: '50%', display: 'grid', placeItems: 'center' }}
+                              >
+                                <X size={12}/>
+                              </button>
+                              {form.image === imgUrl && <span style={{ position: 'absolute', bottom: '0', right: '0', left: '0', background: 'rgba(16, 185, 129, 0.8)', color: '#fff', fontSize: '10px', textAlign: 'center', padding: '2px' }}>الرئيسية</span>}
+                              {form.image !== imgUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => setForm({ ...form, image: imgUrl })}
+                                  style={{ position: 'absolute', bottom: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: '#fff', border: 0, padding: '2px 5px', borderRadius: '4px', fontSize: '10px' }}
+                                >
+                                  تعيين كرئيسية
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <label className="upload-placeholder" style={{ height: '100px', border: '2px dashed #e2e8f0', borderRadius: '12px', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                            <input type="file" accept="image/*" onChange={handleImageUpload} hidden multiple />
+                            <div style={{ textAlign: 'center' }}>
+                              <Upload size={20} />
+                              <div style={{ fontSize: '10px' }}>{uploading ? "جاري الرفع..." : "إضافة صور"}</div>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="full-width">
+                        <label>اسم المنتج</label>
+                        <div className="input-with-action">
+                          <div className="input-rel-container">
+                            <input
+                              required
+                              value={form.name}
+                              onChange={e => setForm({...form, name: e.target.value})}
+                              placeholder="مثلاً: توب حرير مطرز"
+                              disabled={aiLoading}
+                            />
+                            {aiLoading && <div className="inner-spinner"></div>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={generateAiName}
+                            className="ai-gen-btn"
+                            disabled={aiLoading || !form.image}
+                            title="اقتراح اسم بالذكاء الاصطناعي"
+                          >
+                            <Sparkles size={18}/>
+                            <span>{aiLoading ? "جاري التحليل..." : "AI Suggest"}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="full-width">
+                        <label>وصف المنتج (اختياري)</label>
+                        <textarea
+                          value={form.description}
+                          onChange={e => setForm({...form, description: e.target.value})}
+                          placeholder="اكتبي تفاصيل المنتج هنا (الخامة، المقاسات، إلخ)..."
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="full-width">
+                        <label>الألوان المتاحة (افصلي بينها بفاصلة)</label>
+                        <input
+                          value={form.colors.join(', ')}
+                          onChange={e => setForm({...form, colors: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
+                          placeholder="أزرق، أحمر، أخضر..."
+                        />
+                      </div>
+
+                      <div>
+                        <label>القسم الرئيسي</label>
+                        <select value={form.category} onChange={e => {
+                          const cat = mainCategories.find(c => c.name === e.target.value);
+                          setForm({...form, category: e.target.value, subcategory: cat.subcategories[0]});
+                        }}>
+                          {mainCategories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label>القسم الفرعي</label>
+                        <select value={form.subcategory} onChange={e => setForm({...form, subcategory: e.target.value})}>
+                          {selectedCat?.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label>السعر (ج.م - الأساسي)</label>
+                        <input type="number" required value={form.price} onChange={e => setForm({...form, price: e.target.value})} placeholder="500" />
+                      </div>
+
+                      <div>
+                        <label>السعر القديم (ج.م - اختياري)</label>
+                        <input type="number" value={form.old_price} onChange={e => setForm({...form, old_price: e.target.value})} placeholder="700" />
+                      </div>
+
+                      <div>
+                        <label>نسبة الخصم %</label>
+                        <input type="number" value={form.discount} onChange={e => setForm({...form, discount: e.target.value})} />
+                      </div>
+
+                      <div>
+                        <label>المخزون (قطع)</label>
+                        <input type="number" required value={form.stock} onChange={e => setForm({...form, stock: e.target.value})} />
+                      </div>
+
+                      <div className="full-width checkbox-field">
+                        <input
+                          type="checkbox"
+                          id="is_new"
+                          checked={form.is_new}
+                          onChange={e => setForm({...form, is_new: e.target.checked})}
+                        />
+                        <label htmlFor="is_new">تمييز كمنتج "جديد"</label>
+                      </div>
+
+                      <button type="submit" className="btn-primary full-width" disabled={loading || uploading}>
+                        {loading ? "جاري الحفظ..." : editingProduct ? "تحديث التغييرات" : "اعتماد ونشر المنتج"}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              <div className="filters-bar">
+                <div className="search-input">
+                  <input
+                    type="text"
+                    placeholder="بحث في المنتجات..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="table-card">
+                <table className="admin-table">
+                  <thead><tr><th>الصورة</th><th>المنتج</th><th>السعر</th><th>المخزون</th><th>إجراءات</th></tr></thead>
+                  <tbody>
+                    {loading ? (
+                      <tr><td colSpan="5" className="text-center p-25">جاري تحميل المنتجات...</td></tr>
+                    ) : products.length === 0 ? (
+                      <tr><td colSpan="5" className="text-center p-25">لا يوجد منتجات متاحة حالياً.</td></tr>
+                    ) : (
+                      products
+                        .filter(p => {
+                          const s = searchTerm.toLowerCase();
+                          return (p.name?.toLowerCase() || "").includes(s) ||
+                                 (p.category?.toLowerCase() || "").includes(s);
+                        })
+                        .map(p => (
+                        <tr key={p.id}>
+                          <td><img src={p.image} className="admin-thumb" alt="" /></td>
+                          <td>
+                            <div className="prod-info">
+                              <strong>{p.name}</strong>
+                              <small>{p.category} › {p.subcategory}</small>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="price-stack">
+                              <strong>{formatPrice(p.price)}</strong>
+                              {p.old_price && <del>{formatPrice(p.old_price)}</del>}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="stock-control-wrapper">
+                              <button
+                                className="stock-btn minus"
+                                onClick={() => handleLocalStockChange(p.id, (p.stock || 0) - 1)}
+                                disabled={updatingStockId === p.id}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                className="stock-input"
+                                value={p.stock || 0}
+                                onChange={(e) => handleLocalStockChange(p.id, e.target.value)}
+                                disabled={updatingStockId === p.id}
+                              />
+                              <button
+                                className="stock-btn plus"
+                                onClick={() => handleLocalStockChange(p.id, (p.stock || 0) + 1)}
+                                disabled={bulkSaving}
+                              >
+                                +
+                              </button>
+                            </div>
+                            {modifiedStock[p.id] !== undefined && <div className="stock-edit-indicator" title="تغيير غير محفوظ"></div>}
+                            {p.stock < 5 && <small className="stock-warning">مخزون منخفض!</small>}
+                          </td>
+                          <td>
+                            <div className="actions-cell">
+                              <button className="btn-icon edit" onClick={() => handleEdit(p)} title="تعديل"><Edit size={16}/></button>
+                              <button className="btn-icon delete" onClick={() => deleteProduct(p.id)} title="حذف"><Trash2 size={16}/></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'orders' && (
+            <div className="orders-view">
+              {viewingOrder && (
+                <div className="modal-overlay">
+                  <div className="admin-modal">
+                    <div className="modal-header">
+                      <h3>تفاصيل الطلب #{viewingOrder.id.slice(0,8)}</h3>
+                      <button onClick={() => setViewingOrder(null)}><X/></button>
+                    </div>
+                    <div className="order-details-content p-25">
+                      <div className="order-info-grid">
+                        <div>
+                          <strong>بيانات العميل:</strong>
+                          <p>{viewingOrder.full_name}<br/>{viewingOrder.phone}<br/>{viewingOrder.city}, {viewingOrder.address}</p>
+                        </div>
+                        <div>
+                          <strong>حالة الطلب:</strong>
+                          <select
+                            value={viewingOrder.status}
+                            onChange={(e) => updateOrderStatus(viewingOrder.id, e.target.value)}
+                            className="status-select"
+                          >
+                            <option value="Pending">قيد الانتظار</option>
+                            <option value="Processing">جاري التجهيز</option>
+                            <option value="Shipped">تم الشحن</option>
+                            <option value="Delivered">تم التوصيل</option>
+                            <option value="Cancelled">ملغي</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="order-items-list mt-20">
+                        <strong>المنتجات:</strong>
+                        <table className="admin-table">
+                          <thead>
+                            <tr><th>المنتج</th><th>الكمية</th><th>السعر</th></tr>
+                          </thead>
+                          <tbody>
+                            {JSON.parse(viewingOrder.items || '[]').map((item, idx) => (
+                              <tr key={idx}>
+                                <td>{item.name}</td>
+                                <td>{item.quantity}</td>
+                                <td>{formatPrice(item.price)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="order-total-box mt-20">
+                        <strong>الإجمالي الكلي: {formatPrice(viewingOrder.total_price)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="table-card">
+                <table className="admin-table">
+                  <thead>
+                    <tr><th>رقم الطلب</th><th>العميل</th><th>التاريخ</th><th>الإجمالي</th><th>الحالة</th><th>إجراءات</th></tr>
+                  </thead>
+                  <tbody>
+                    {orders.map(o => (
+                      <tr key={o.id}>
+                        <td>#{o.id.slice(0,8)}</td>
+                        <td>{o.full_name}</td>
+                        <td>{new Date(o.created_at).toLocaleDateString('ar-EG')}</td>
+                        <td>{formatPrice(o.total_price)}</td>
+                        <td>
+                          <span className={`status-pill ${o.status?.toLowerCase()}`}>
+                            {o.status === 'Pending' ? 'انتظار' :
+                             o.status === 'Processing' ? 'تجهيز' :
+                             o.status === 'Shipped' ? 'شحن' :
+                             o.status === 'Delivered' ? 'تم' : 'ملغي'}
+                          </span>
+                        </td>
+                        <td>
+                          <button className="btn-icon edit" onClick={() => setViewingOrder(o)}><ChevronRight size={16}/></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'coupons' && (
+            <div className="coupons-view">
+              {showAddCoupon && (
+                <div className="modal-overlay">
+                  <div className="admin-modal" style={{maxWidth: '450px'}}>
+                    <div className="modal-header"><h3>إنشاء كوبون خصم جديد</h3><button onClick={() => setShowAddCoupon(false)}><X/></button></div>
+                    <form onSubmit={handleAddCoupon} className="p-25">
+                      <div className="form-group mb-15">
+                        <label>كود الخصم (مثلاً: SAVE20)</label>
+                        <input required value={couponForm.code} onChange={e => setCouponCouponForm({...couponForm, code: e.target.value})} placeholder="الرمز..." />
+                      </div>
+                      <div className="form-group mb-15">
+                        <label>نسبة الخصم (%)</label>
+                        <input type="number" required value={couponForm.percent} onChange={e => setCouponCouponForm({...couponForm, percent: e.target.value})} />
+                      </div>
+                      <div className="form-group mb-20">
+                        <label>الحد الأقصى لمبلغ الخصم ({market.label})</label>
+                        <input type="number" required value={couponForm.max_amount} onChange={e => setCouponCouponForm({...couponForm, max_amount: e.target.value})} />
+                      </div>
+                      <div className="form-grid mb-20" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
+                        <div className="form-group">
+                          <label>تاريخ البدء</label>
+                          <input type="date" value={couponForm.starts_at} onChange={e => setCouponCouponForm({...couponForm, starts_at: e.target.value})} />
+                        </div>
+                        <div className="form-group">
+                          <label>تاريخ الانتهاء (اختياري)</label>
+                          <input type="date" value={couponForm.expires_at} onChange={e => setCouponCouponForm({...couponForm, expires_at: e.target.value})} />
+                        </div>
+                      </div>
+                      <button type="submit" className="btn-primary full-width">حفظ ونشر الكوبون</button>
+                    </form>
+                  </div>
+                </div>
+              )}
+              <div className="table-card">
+                <table className="admin-table">
+                  <thead><tr><th>الكود</th><th>النسبة</th><th>الحد الأقصى</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+                  <tbody>
+                    {coupons.map(c => (
+                      <tr key={c.id}>
+                        <td><strong>{c.code}</strong></td>
+                        <td>{c.discount_percent}%</td>
+                        <td>{formatPrice(c.max_discount_amount)}</td>
+                        <td><span className={`status-pill ${c.is_active ? 'delivered' : 'cancelled'}`}>{c.is_active ? 'فعال' : 'معطل'}</span></td>
+                        <td>
+                          <div className="actions-cell">
+                            <button onClick={() => toggleCoupon(c.id, c.is_active)} className="btn-icon edit" title="تغيير الحالة"><Clock size={16}/></button>
+                            <button onClick={() => deleteCoupon(c.id)} className="btn-icon delete" title="حذف الكوبون"><Trash2 size={16}/></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {activeTab === 'customers' && (
+            <div className="customers-view">
+              <div className="table-card" style={{ overflowX: 'auto' }}>
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>الاسم</th>
+                      <th>البريد الإلكتروني</th>
+                      <th>رقم الهاتف</th>
+                      <th>الدولة / المدينة</th>
+                      <th>العنوان بالتفصيل</th>
+                      <th>تاريخ الانضمام</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customers.map(c => (
+                      <tr key={c.id}>
+                        <td><strong>{c.full_name || 'بدون اسم'}</strong></td>
+                        <td>{c.email || <span style={{color: '#94a3b8', fontSize: '11px'}}>لم يسجل</span>}</td>
+                        <td dir="ltr" style={{ textAlign: 'right' }}>{c.phone || '-'}</td>
+                        <td>{c.country || '-'} / {c.city || '-'}</td>
+                        <td><small title={c.address}>{c.address ? (c.address.length > 30 ? c.address.substring(0, 30) + '...' : c.address) : '-'}</small></td>
+                        <td>{new Date(c.created_at).toLocaleDateString('ar-EG')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    </PageShell>
+  );
+}

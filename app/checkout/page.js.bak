@@ -1,0 +1,688 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useCart } from "../../components/CartContext";
+import { useCurrency } from "../../components/CurrencyContext";
+import { useAuth } from "../../components/AuthContext";
+import Price from "../../components/Price";
+import BackButton from "../../components/BackButton";
+import PageShell from "../../components/PageShell";
+import { CheckCircle2, MessageCircle, MapPin, X, LocateFixed, Copy, Check, UploadCloud } from "lucide-react";
+import { supabase } from "../../lib/supabase";
+
+const bankDetails = {
+  bankName: "First Abu Dhabi Bank PJSC",
+  accountName: "AHMEDALMORTADA SALMAN M FADALALLAH",
+  accountType: "Saving Account Retail Islamic",
+  accountNumber: "9356495764161001",
+  iban: "AE090359356495764161001",
+  swiftCode: "NBADAEAAXXX",
+  currency: "AED"
+};
+
+const countryCities = {
+  "مصر": [
+    "القاهرة", "الجيزة", "الإسكندرية", "الدقهلية", "البحر الأحمر", "البحيرة", "الفيوم", "الغربية",
+    "الإسماعيلية", "المنوفية", "المنيا", "القليوبية", "الوادي الجديد", "السويس", "الشرقية", "دمياط",
+    "جنوب سيناء", "كفر الشيخ", "مطروح", "قنا", "شمال سيناء", "سوهاج", "بني سويف", "بورسعيد",
+    "الأقصر", "أسوان", "أسيوط"
+  ],
+  "الإمارات": ["أبوظبي", "دبي", "الشارقة", "عجمان", "أم القيوين", "رأس الخيمة", "الفجيرة"],
+  "قطر": ["الدوحة", "الريان", "الوكرة", "الخور", "الشمال", "الظعاين", "أم صلال", "الشيحانية"]
+};
+
+const countryDialCodes = {
+  "مصر": "+20",
+  "الإمارات": "+971",
+  "قطر": "+974"
+};
+
+export default function CheckoutPage() {
+  const { items, total, clearCart } = useCart();
+  const { market, formatPrice, marketCode } = useCurrency();
+  const { user, profile } = useAuth();
+  const [submitted, setSubmitted] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [locationUrl, setLocationUrl] = useState("");
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [tempCoords, setTempCoords] = useState(null);
+  const [copiedField, setCopiedField] = useState("");
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+
+  // Step Control
+  const [step, setStep] = useState("input"); // "input" | "review"
+
+  // Discount Code Logic
+  const [discountOption, setDiscountOption] = useState(null); // null | "yes" | "no"
+  const [couponCode, setCouponCode] = useState("");
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+
+  const discountedTotal = total * (1 - discountPercent / 100);
+
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    country: "مصر",
+    city: "القاهرة",
+    address: "",
+    payment: "الدفع عند الاستلام",
+    notes: "",
+    transferIdentifier: ""
+  });
+
+  useEffect(() => {
+    if (profile) {
+      setForm(f => ({
+        ...f,
+        name: profile.full_name || f.name,
+        phone: profile.phone || f.phone,
+        city: profile.city || f.city,
+        address: profile.address || f.address,
+        transferIdentifier: profile.phone || f.phone
+      }));
+    }
+  }, [profile]);
+
+  // Sync transfer identifier with phone by default
+  useEffect(() => {
+    if (!form.transferIdentifier && form.phone) {
+      setForm(f => ({ ...f, transferIdentifier: f.phone }));
+    }
+  }, [form.phone]);
+
+  function updateField(event) {
+    const { name, value } = event.target;
+    if (name === "country") {
+      const defaultCity = countryCities[value][0];
+      const defaultPayment = "الدفع عند الاستلام";
+      setForm({
+        ...form,
+        country: value,
+        city: defaultCity,
+        payment: defaultPayment
+      });
+    } else {
+      setForm({ ...form, [name]: value });
+    }
+  }
+
+  function getLocation() {
+    setLoadingLocation(true);
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setTempCoords({ lat: latitude, lng: longitude });
+          setLoadingLocation(false);
+          setShowMapModal(true);
+        },
+        (error) => {
+          setLoadingLocation(false);
+          setShowMapModal(true); // Open modal anyway to let them pick manually
+        }
+      );
+    } else {
+      setLoadingLocation(false);
+      setShowMapModal(true);
+    }
+  }
+
+  function confirmMapLocation() {
+    if (tempCoords) {
+      const url = `https://www.google.com/maps?q=${tempCoords.lat},${tempCoords.lng}`;
+      setLocationUrl(url);
+      setShowMapModal(false);
+      alert("تم حفظ موقعك بنجاح ✅");
+    } else {
+      // If no coords, we can't confirm
+      alert("يرجى تحديد موقع على الخريطة أولاً");
+    }
+  }
+
+  function copyToClipboard(text, field) {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(""), 2000);
+  }
+
+  async function handleReceiptUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingReceipt(true);
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `receipts/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('Public Bucket')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      alert("خطأ في رفع الإيصال: " + uploadError.message);
+    } else {
+      const { data } = supabase.storage.from('Public Bucket').getPublicUrl(filePath);
+      setReceiptFile(data.publicUrl);
+    }
+    setUploadingReceipt(false);
+  }
+
+  async function handleFinalSubmit(appliedCoupon = null) {
+    if (!items.length) return;
+
+    setIsSending(true);
+
+    try {
+      // 1. التحقق من كود الخصم فقط (المخزون تم خصمه بالفعل عند الإضافة للسلة)
+      let finalDiscount = 0;
+      if (appliedCoupon) {
+        const { data: couponData } = await supabase
+          .from('coupons')
+          .select('discount_percent')
+          .eq('code', appliedCoupon)
+          .eq('is_active', true)
+          .single();
+
+        if (couponData) finalDiscount = couponData.discount_percent;
+      }
+
+      const finalPrice = total * (1 - finalDiscount / 100);
+      const fullPhone = `${countryDialCodes[form.country]}${form.phone}`;
+
+      const orderData = {
+        user_id: user?.id || null,
+        full_name: form.name,
+        phone: fullPhone,
+        country: form.country,
+        city: form.city,
+        address: form.address,
+        location_url: locationUrl,
+        payment_method: form.payment,
+        payment_receipt: receiptFile,
+        transfer_identifier: form.transferIdentifier,
+        notes: form.notes,
+        items: JSON.stringify(items),
+        total_price: finalPrice,
+        discount_applied: finalDiscount,
+        status: 'Pending',
+        created_at: new Date()
+      };
+
+      // 2. حفظ الطلب في Supabase (لا يتم إجراء أي عملية خصم جديدة هنا)
+      const { error: orderError } = await supabase.from('orders').insert([orderData]);
+      if (orderError) throw orderError;
+
+      // 3. تحديث الملف الشخصي
+      if (user && (!profile?.full_name || !profile?.phone)) {
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          full_name: form.name,
+          phone: form.phone,
+          city: form.city,
+          address: form.address,
+          updated_at: new Date()
+        });
+      }
+
+      // 4. إعداد نص الواتساب
+      const orderText = encodeURIComponent(
+        `طلب جديد من متجر زينة النيل\n\n` +
+        `الاسم: ${form.name}\n` +
+        `الهاتف: ${fullPhone}\n` +
+        `الدولة: ${form.country}\n` +
+        `المدينة: ${form.city}\n` +
+        `العنوان: ${form.address}\n` +
+        (locationUrl ? `رابط الموقع (Google Maps): ${locationUrl}\n` : "") +
+        `طريقة الدفع: ${form.payment}\n` +
+        (form.transferIdentifier ? `الرقم المحول منه: ${form.transferIdentifier}\n` : "") +
+        `ملاحظات: ${form.notes || "لا يوجد"}\n\n` +
+        `المنتجات:\n` +
+        items.map((item, index) =>
+          `${index + 1}- ${item.name} | اللون: ${item.color} | الكمية: ${item.quantity} | ${formatPrice(item.price * item.quantity)}`
+        ).join("\n") +
+        (finalDiscount > 0 ? `\n\nالخصم المطبق: ${finalDiscount}%` : "") +
+        `\n\nالإجمالي النهائي: ${formatPrice(finalPrice)}\nالعملة: ${market.label}`
+      );
+
+      const whatsappNumber = marketCode === "EG" ? "201092879740" : "971556414279";
+      window.open(`https://wa.me/${whatsappNumber}?text=${orderText}`, "_blank");
+
+      setSubmitted(true);
+      clearCart();
+    } catch (err) {
+      alert("حدث خطأ: " + err.message);
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <PageShell>
+        <section className="order-success">
+          <div className="message-bubble">
+            <CheckCircle2 size={64}/>
+            <h1>تم إرسال طلبك!</h1>
+            <p>شكرًا لكِ يا {form.name}، تم إرسال تفاصيل الطلب بنجاح إلى خدمة العملاء وسنتواصل معكِ لتأكيد الشحن.</p>
+          </div>
+          <div className="contact-buttons">
+            <button className="back-button" onClick={() => { clearCart(); window.location.href = "/"; }}>
+              العودة للرئيسية
+            </button>
+          </div>
+        </section>
+      </PageShell>
+    );
+  }
+
+  if (step === "review") {
+    return (
+      <PageShell>
+        <div className="order-review-container p-6 bg-white rounded-lg shadow-md max-w-3xl mx-auto mt-8">
+          <h2 className="text-2xl font-bold text-center text-blue-900 mb-6">مراجعة وتأكيد الطلب</h2>
+
+          <div className="customer-info-review bg-gray-50 p-4 rounded-md mb-6 border border-gray-200">
+            <h3 className="font-semibold text-lg mb-4 border-b pb-2">بيانات العميل والتوصيل</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div><span className="text-gray-500">الاسم:</span> <span className="font-medium">{form.name}</span></div>
+              <div><span className="text-gray-500">رقم الهاتف:</span> <span className="font-medium" dir="ltr">{countryDialCodes[form.country]}{form.phone}</span></div>
+              <div><span className="text-gray-500">الدولة / المدينة:</span> <span className="font-medium">{form.country} / {form.city}</span></div>
+              <div><span className="text-gray-500">طريقة الدفع:</span> <span className="font-medium">{form.payment}</span></div>
+              <div className="md:col-span-2"><span className="text-gray-500">العنوان:</span> <span className="font-medium">{form.address}</span></div>
+            </div>
+          </div>
+
+          <div className="cart-items-review bg-gray-50 p-4 rounded-md mb-6 border border-gray-200">
+            <h3 className="font-semibold text-lg mb-4 border-b pb-2">ملخص المنتجات</h3>
+            <ul className="space-y-3">
+              {items.map((item, index) => (
+                <li key={index} className="flex justify-between items-center text-sm">
+                  <span>{item.name} (الكمية: {item.quantity})</span>
+                  <Price amount={item.price * item.quantity} />
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 pt-4 border-t flex justify-between font-bold text-lg">
+              <span>الإجمالي:</span>
+              <Price amount={total} />
+            </div>
+          </div>
+
+          <div className="discount-section mb-6">
+            <p className="font-semibold mb-3 text-center">هل يوجد لديك كود خصم؟</p>
+            <div className="flex justify-center gap-4 mb-4">
+              <button
+                className={`px-6 py-2 rounded-md border transition ${discountOption === 'yes' ? 'bg-blue-900 text-white' : 'bg-white text-blue-900 border-blue-900'}`}
+                onClick={() => setDiscountOption('yes')}
+              >
+                نعم، لدي كود
+              </button>
+              <button
+                className={`px-6 py-2 rounded-md border transition ${discountOption === 'no' ? 'bg-blue-900 text-white' : 'bg-white text-blue-900 border-blue-900'}`}
+                onClick={() => setDiscountOption('no')}
+              >
+                لا يوجد
+              </button>
+            </div>
+
+            {discountOption === 'yes' && (
+              <div className="flex flex-col items-center gap-3 mt-4 animate-fade-in">
+                <input
+                  type="text"
+                  placeholder="أدخل كود الخصم هنا..."
+                  className="border p-2 rounded w-64 text-center focus:ring-2 focus:ring-blue-900 outline-none"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                />
+                <button
+                  className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-md font-bold transition w-full max-w-xs disabled:opacity-50"
+                  disabled={isSending}
+                  onClick={() => handleFinalSubmit(couponCode)}
+                >
+                  {isSending ? "جاري المعالجة..." : "تطبيق الخصم وإتمام الطلب"}
+                </button>
+              </div>
+            )}
+
+            {discountOption === 'no' && (
+              <div className="flex justify-center mt-4 animate-fade-in">
+                <button
+                  className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-md font-bold transition w-full max-w-xs disabled:opacity-50"
+                  disabled={isSending}
+                  onClick={() => handleFinalSubmit(null)}
+                >
+                  {isSending ? "جاري المعالجة..." : "إتمام عملية الدفع بدون خصم"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="text-center mt-8">
+            <button onClick={() => setStep("input")} className="text-gray-500 hover:text-gray-800 underline text-sm">
+              &rarr; رجوع لتعديل البيانات
+            </button>
+          </div>
+        </div>
+      </PageShell>
+    );
+  }
+
+  return (
+    <PageShell>
+      <section className="checkout-page">
+        <BackButton fallback="/products" />
+
+        <div className="checkout-heading">
+          <span>زينة النيل</span>
+          <h1>إتمام الطلب</h1>
+          <p>أدخل بيانات التوصيل، ثم راجع المنتجات قبل تأكيد الطلب.</p>
+        </div>
+
+        {items.length === 0 ? (
+          <div className="empty-checkout">
+            <h2>لا توجد منتجات في السلة</h2>
+            <Link href="/products">تصفّح المنتجات</Link>
+          </div>
+        ) : (
+          <form className="checkout-grid" onSubmit={(e) => {
+            e.preventDefault();
+            if (form.payment === "تحويل بنكي" && !receiptFile) {
+              return alert("يرجى إرفاق صورة إشعار الدفع لإتمام الطلب عبر التحويل البنكي.");
+            }
+            setStep("review");
+          }}>
+            <div className="checkout-form-card">
+              <h2>بيانات العميل والتوصيل</h2>
+
+              <div className="form-grid">
+                <label>
+                  <span>الاسم الكامل</span>
+                  <input name="name" value={form.name} onChange={updateField} required />
+                </label>
+
+                <label>
+                  <span>رقم الهاتف</span>
+                  <div className="phone-input-wrapper">
+                    <span className="phone-prefix">{countryDialCodes[form.country]}</span>
+                    <input
+                      name="phone"
+                      value={form.phone}
+                      onChange={updateField}
+                      required
+                      placeholder="0123456789"
+                      type="tel"
+                    />
+                  </div>
+                </label>
+
+                <label>
+                  <span>الدولة</span>
+                  <select name="country" value={form.country} onChange={updateField}>
+                    <option>مصر</option>
+                    <option>الإمارات</option>
+                    <option>قطر</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>المدينة / المنطقة</span>
+                  <select name="city" value={form.city} onChange={updateField}>
+                    {countryCities[form.country].map((city) => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="full-width">
+                  <span>العنوان بالتفصيل</span>
+                  <input name="address" value={form.address} onChange={updateField} required />
+                </label>
+
+                <div className="full-width location-box">
+                  <button
+                    type="button"
+                    className={`location-btn ${locationUrl ? "success" : ""}`}
+                    onClick={getLocation}
+                    disabled={loadingLocation}
+                  >
+                    <MapPin size={18}/>
+                    {loadingLocation ? "جاري تحديد الموقع..." : locationUrl ? "تم حفظ موقعك بنجاح ✅" : "إرفاق موقعي (Google Maps)"}
+                  </button>
+                  <small>اختياري: لتوصيل أدق، يمكنك إرسال موقعك الحالي عبر الخريطة.</small>
+                </div>
+
+                <label>
+                  <span>طريقة الدفع</span>
+                  <select name="payment" value={form.payment} onChange={updateField}>
+                    <option>الدفع عند الاستلام</option>
+                    {form.country === "مصر" ? (
+                      <>
+                        <option>فودافون كاش</option>
+                        <option>إنستاباي</option>
+                      </>
+                    ) : (
+                      <option>تحويل بنكي</option>
+                    )}
+                  </select>
+                </label>
+
+                <label className="full-width">
+                  <span>ملاحظات الطلب</span>
+                  <textarea name="notes" value={form.notes} onChange={updateField} rows="4" />
+                </label>
+              </div>
+
+              {form.payment === "تحويل بنكي" && (
+                <div className="bank-transfer-container mt-20">
+                  <div className="bank-details-card">
+                    <h3>بيانات التحويل البنكي (الإمارات)</h3>
+                    <div className="bank-grid">
+                      <div><span>اسم البنك</span><strong>{bankDetails.bankName}</strong></div>
+                      <div><span>صاحب الحساب</span><strong>{bankDetails.accountName}</strong></div>
+                      <div className="full"><span>نوع الحساب</span><strong>{bankDetails.accountType}</strong></div>
+
+                      <div className="copy-row">
+                        <span>رقم الحساب</span>
+                        <div className="copy-box">
+                          <code>{bankDetails.accountNumber}</code>
+                          <button type="button" onClick={() => copyToClipboard(bankDetails.accountNumber, "acc")}>
+                            {copiedField === "acc" ? <Check size={16} color="#10b981"/> : <Copy size={16}/>}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="copy-row full">
+                        <span>الـ IBAN</span>
+                        <div className="copy-box">
+                          <code>{bankDetails.iban}</code>
+                          <button type="button" onClick={() => copyToClipboard(bankDetails.iban, "iban")}>
+                            {copiedField === "iban" ? <Check size={16} color="#10b981"/> : <Copy size={16}/>}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div><span>رمز SWIFT</span><strong>{bankDetails.swiftCode}</strong></div>
+                      <div><span>العملة</span><strong>{bankDetails.currency}</strong></div>
+                    </div>
+                  </div>
+
+                  <div className="receipt-upload mt-20">
+                    <label>إرفاق إشعار الدفع (صورة أو PDF)</label>
+                    <div className="upload-box">
+                      {receiptFile ? (
+                        <div className="receipt-preview">
+                          <CheckCircle2 size={24} color="#10b981"/>
+                          <span>تم رفع الإيصال بنجاح</span>
+                          <button type="button" onClick={() => setReceiptFile(null)}><X size={16}/></button>
+                        </div>
+                      ) : (
+                        <label className="upload-btn">
+                          <input type="file" accept="image/*,.pdf" onChange={handleReceiptUpload} hidden />
+                          {uploadingReceipt ? (
+                            <span>جاري الرفع...</span>
+                          ) : (
+                            <>
+                              <UploadCloud size={24}/>
+                              <span>اضغطي هنا لرفع صورة الإيصال</span>
+                            </>
+                          )}
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(form.payment === "فودافون كاش" || form.payment === "إنستاباي") && form.country === "مصر" && (
+                <div className="bank-transfer-container mt-20">
+                  <div className="bank-details-card egypt-payment">
+                    <h3>بيانات الدفع ({form.payment})</h3>
+                    <div className="egypt-details">
+                      <p>
+                        يرجى التحويل إلى الرقم التالي:
+                        <strong className="d-block mt-5">01092879740</strong>
+                      </p>
+                    </div>
+
+                    <div className="transfer-from-field mt-15">
+                      <label>الرقم المحول منه (محفظتك)</label>
+                      <input
+                        type="tel"
+                        name="transferIdentifier"
+                        value={form.transferIdentifier}
+                        onChange={updateField}
+                        placeholder="أدخل الرقم هنا..."
+                      />
+                      <p className="transfer-hint">
+                        تلقائياً هو رقم هاتفك المسجل، يمكنك تغييره إذا حولتِ من رقم آخر.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="receipt-upload mt-20">
+                    <label>إرفاق صورة التحويل (لقطة شاشة)</label>
+                    <div className="upload-box">
+                      {receiptFile ? (
+                        <div className="receipt-preview">
+                          <CheckCircle2 size={24} color="#10b981"/>
+                          <span>تم رفع الإيصال بنجاح</span>
+                          <button type="button" onClick={() => setReceiptFile(null)}><X size={16}/></button>
+                        </div>
+                      ) : (
+                        <label className="upload-btn">
+                          <input type="file" accept="image/*,.pdf" onChange={handleReceiptUpload} hidden />
+                          {uploadingReceipt ? (
+                            <span>جاري الرفع...</span>
+                          ) : (
+                            <>
+                              <UploadCloud size={24}/>
+                              <span>اضغطي هنا لرفع صورة الإيصال</span>
+                            </>
+                          )}
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <aside className="checkout-summary">
+              <h2>ملخص الطلب</h2>
+
+              <div className="checkout-items">
+                {items.map((item) => (
+                  <article key={`${item.id}-${item.color}`}>
+                    <img src={item.image} alt={item.name}/>
+                    <div>
+                      <h3>{item.name}</h3>
+                      <p>اللون: {item.color}</p>
+                      <p>الكمية: {item.quantity}</p>
+                    </div>
+                    <Price amount={item.price * item.quantity} />
+                  </article>
+                ))}
+              </div>
+
+              <div className="checkout-total">
+                <span>الإجمالي</span>
+                <Price amount={total} className="checkout-total-price" />
+              </div>
+
+              <button type="submit" className="confirm-order">
+                المتابعة لمراجعة الطلب
+              </button>
+
+              <small>تكلفة الشحن يتم تأكيدها حسب الدولة والمدينة.</small>
+
+              <div className="trust-badges">
+                <p>تسوقي بأمان مع خيارات دفع متنوعة</p>
+                <div className="badge-grid">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg" alt="Visa" title="Visa" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="Mastercard" title="Mastercard" />
+                  <img src="https://cdn.tamara.co/assets/png/tamara-logo-badge-en.png" alt="Tamara" title="Tamara" />
+                  <img src="https://cdn.tabby.ai/assets/logo.png" alt="Tabby" title="Tabby" />
+                </div>
+              </div>
+            </aside>
+          </form>
+        )}
+
+        {showMapModal && (
+          <div className="map-modal-overlay">
+            <div className="map-modal-content">
+              <div className="map-modal-header">
+                <h3>تحديد الموقع بدقة</h3>
+                <button onClick={() => setShowMapModal(false)}><X/></button>
+              </div>
+              <div className="map-placeholder">
+                <div className="map-instruction">الرجاء الضغط على "موقعي الحالي" لتحديد منزلك بدقة</div>
+
+                {/* Simulated Interactive Map using Google Maps Embed for visuals + draggable logic placeholder */}
+                <iframe
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${(tempCoords?.lng || 31.2357) - 0.01}%2C${(tempCoords?.lat || 30.0444) - 0.01}%2C${(tempCoords?.lng || 31.2357) + 0.01}%2C${(tempCoords?.lat || 30.0444) + 0.01}&layer=mapnik&marker=${tempCoords?.lat || 30.0444}%2C${tempCoords?.lng || 31.2357}`}
+                  style={{ border: 0 }}
+                ></iframe>
+
+                <div className="map-marker-centered">
+                  <MapPin size={48} fill="#ef4444" color="#fff" />
+                </div>
+              </div>
+
+              <div className="map-modal-footer">
+                <button
+                  className="location-btn"
+                  onClick={() => {
+                    // Re-try geolocation to center
+                    getLocation();
+                  }}
+                >
+                  <LocateFixed size={18}/> موقعي الحالي
+                </button>
+                <button
+                  className="btn-primary"
+                  style={{flex: 1}}
+                  onClick={() => {
+                    // For the sake of this demo/implementation without a real JS map library,
+                    // we'll use the coordinates we have (either from geolocation or default)
+                    if (!tempCoords) setTempCoords({ lat: 30.0444, lng: 31.2357 });
+                    confirmMapLocation();
+                  }}
+                >
+                  تأكيد هذا الموقع للتوصيل
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+    </PageShell>
+  );
+}
