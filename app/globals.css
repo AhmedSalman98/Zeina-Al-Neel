@@ -2080,12 +2080,15 @@ button{cursor:pointer}
   place-items: center;
   border: 2px solid #fff;
 }
-  z-index:80;
-  border:0;
-  background:rgba(0,15,35,.55);
-  opacity:0;
-  visibility:hidden;
-  transition:.25s ease;
+.cart-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  border: 0;
+  background: rgba(0,15,35,.55);
+  opacity: 0;
+  visibility: hidden;
+  transition: .25s ease;
 }
 .cart-backdrop.show{
   opacity:1;
