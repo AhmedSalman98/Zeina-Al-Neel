@@ -1182,6 +1182,11 @@ button{cursor:pointer}
     padding-top: 15px;
   }
 }
+
+.btn-cancel {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 0;
   padding: 12px 20px;
   border-radius: 8px;
   font-weight: 700;
