@@ -69,30 +69,26 @@ export default function Home() {
         <div className="slider-dots"><i/><i/><i/><i/></div>
       </Link>
 
-      <section className="category-row">
+      <section className="category-row-slider">
         <Link
-          className="category-banner"
-          id="tob"
+          className="category-banner-item"
           href="/products?category=فاشن&subcategory=تياب"
         >
           <img src="/images/category-tob.jpg" alt="التوب السوداني"/>
-          <div className="category-overlay">
+          <div className="category-overlay-mini">
             <h2>التوب السوداني</h2>
-            <p>تشكيلة واسعة من أجمل التوب السوداني للمناسبات واليومي والحرير والمطرز</p>
-            <span className="shop-now-btn">تسوقي الآن ›</span>
+            <span>تسوقي الآن ›</span>
           </div>
         </Link>
 
         <Link
-          className="category-banner"
-          id="accessories"
+          className="category-banner-item"
           href="/products?category=إكسسوارات وشنط وأحذية&subcategory=إكسسوارات"
         >
-          <img src="/images/category-accessories.jpg" alt="الإكسسوارات السودانية"/>
-          <div className="category-overlay">
-            <h2>الإكسسوارات السودانية</h2>
-            <p>إكسسوارات تراثية فاخرة تعكس جمال الثقافة السودانية والأناقة العصرية</p>
-            <span className="shop-now-btn">تسوقي الآن ›</span>
+          <img src="/images/category-accessories.jpg" alt="الإكسسوارات"/>
+          <div className="category-overlay-mini">
+            <h2>الإكسسوارات</h2>
+            <span>تسوقي الآن ›</span>
           </div>
         </Link>
       </section>

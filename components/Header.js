@@ -5,13 +5,14 @@ import { Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   ShoppingCart, Heart, UserRound, Search, Truck, ChevronDown,
-  PackageCheck, Mail
+  PackageCheck, Mail, Menu, X
 } from "lucide-react";
 import { useCart } from "./CartContext";
 import { useWishlist } from "./WishlistContext";
 import { useCurrency, markets } from "./CurrencyContext";
 import { useAuth } from "./AuthContext";
 import { supabase } from "../lib/supabase";
+import { useState } from "react";
 
 const fashionSubs = [
   "دراعات", "طرح", "تياب", "عبايات وملابس محجبات",
@@ -34,6 +35,7 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
   const { count: wishlistCount } = useWishlist();
   const { marketCode, market, changeMarket, ratesUpdated } = useCurrency();
   const { user, isAdmin } = useAuth();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const category = searchParams.get("category");
   const subcategory = searchParams.get("subcategory");
@@ -55,11 +57,11 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
     <>
       <div className="announcement">
         <div><Truck size={16}/> شحن إلى مصر والإمارات وقطر</div>
-        <div>أهلاً بك في زينة النيل — أناقة سودانية بأصالة النيل</div>
-        <div className="currency">{market.flag} الأسعار بـ {market.label}</div>
+        <div className="desktop-only">أهلاً بك في زينة النيل — أناقة سودانية بأصالة النيل</div>
+        <div className="currency">{market.flag} {market.label}</div>
       </div>
 
-      <div className="contact-strip">
+      <div className="contact-strip desktop-only">
         <a href="tel:+201092879740">
           <span>
             <b dir="ltr">+20 109 287 9740 <img src="https://flagcdn.com/w40/eg.png" alt="مصر" className="flag-img" /></b>
@@ -93,9 +95,21 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
       </div>
 
       <header className="main-header">
-        <Link href="/" className="logo-panel" aria-label="زينة النيل">
-          <img src="/images/logo-full.png" alt="زينة النيل" />
-        </Link>
+        <div className="mobile-header-top">
+          <button className="mobile-menu-toggle" onClick={() => setIsMenuOpen(true)}>
+            <Menu size={28} />
+          </button>
+
+          <Link href="/" className="logo-panel" aria-label="زينة النيل">
+            <img src="/images/logo-full.png" alt="زينة النيل" />
+          </Link>
+
+          <div className="header-icons mobile-only-icons">
+             <button className="cart-icon" onClick={onCartOpen}>
+                <ShoppingCart size={24}/><i>{count}</i>
+              </button>
+          </div>
+        </div>
 
         <div className="header-main">
           <div className="header-tools">
@@ -108,7 +122,7 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
               <button aria-label="بحث"><Search size={24}/></button>
             </label>
 
-            <div className="header-icons">
+            <div className="header-icons desktop-only">
               {user ? (
                 <div className="nav-dropdown user-dropdown">
                   <button className="user-btn">
@@ -139,7 +153,7 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
             </div>
           </div>
 
-          <nav>
+          <nav className="desktop-only">
             <Link className={pathname === "/" ? "active" : ""} href="/">الرئيسية</Link>
             <Link className={pathname === "/products" && !category ? "active" : ""} href="/products">جميع المنتجات</Link>
 
@@ -193,6 +207,64 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
           </nav>
         </div>
       </header>
+
+      {/* Mobile Side Menu */}
+      <div className={`mobile-side-menu ${isMenuOpen ? "open" : ""}`}>
+        <div className="menu-overlay" onClick={() => setIsMenuOpen(false)} />
+        <div className="menu-content">
+          <div className="menu-header">
+            <img src="/images/logo-header.png" alt="زينة النيل" />
+            <button onClick={() => setIsMenuOpen(false)}><X size={30}/></button>
+          </div>
+
+          <div className="menu-market-mini">
+            <span>العملة الحالية: {market.flag} {market.label}</span>
+          </div>
+
+          <nav className="mobile-nav-list">
+            <Link href="/" onClick={() => setIsMenuOpen(false)}>الرئيسية</Link>
+            <Link href="/products" onClick={() => setIsMenuOpen(false)}>جميع المنتجات</Link>
+            <Link href={productUrl("فاشن")} onClick={() => setIsMenuOpen(false)}>فاشن</Link>
+            <Link href={productUrl("إكسسوارات وشنط وأحذية")} onClick={() => setIsMenuOpen(false)}>إكسسوارات</Link>
+            <Link href={productUrl("العطور والخلطات")} onClick={() => setIsMenuOpen(false)}>عطور وخلطات</Link>
+            <Link href={productUrl("مستلزمات العروس")} onClick={() => setIsMenuOpen(false)}>مستلزمات العروس</Link>
+            <hr/>
+            <Link href="/about" onClick={() => setIsMenuOpen(false)}>من نحن</Link>
+            <Link href="/contact" onClick={() => setIsMenuOpen(false)}>تواصل معنا</Link>
+            {user ? (
+               <Link href="/profile" onClick={() => setIsMenuOpen(false)}>حسابي</Link>
+            ) : (
+               <Link href="/login" onClick={() => setIsMenuOpen(false)}>تسجيل الدخول</Link>
+            )}
+          </nav>
+        </div>
+      </div>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="mobile-bottom-nav">
+        <Link href="/" className={pathname === "/" ? "active" : ""}>
+          <UserRound size={22} />
+          <span>الرئيسية</span>
+        </Link>
+        <Link href="/wishlist" className={pathname === "/wishlist" ? "active" : ""}>
+          <div className="nav-icon-badge">
+            <Heart size={22} />
+            {wishlistCount > 0 && <i>{wishlistCount}</i>}
+          </div>
+          <span>المفضلة</span>
+        </Link>
+        <button onClick={onCartOpen} className="mobile-nav-cart">
+          <div className="nav-icon-badge">
+            <ShoppingCart size={22} />
+            {count > 0 && <i>{count}</i>}
+          </div>
+          <span>السلة</span>
+        </button>
+        <Link href="/profile" className={pathname === "/profile" ? "active" : ""}>
+          <UserRound size={22} />
+          <span>حسابي</span>
+        </Link>
+      </nav>
     </>
   );
 }
