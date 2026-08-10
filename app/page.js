@@ -112,17 +112,13 @@ export default function Home() {
           <Link href="/products" className="view-all-link">عرض الكل <ChevronLeft size={15}/></Link>
         </div>
 
-        <div className="product-slider">
-          <button className="side-arrow"><ChevronRight/></button>
-          <div className="product-grid">
-            {filtered.map(product => (
-              <ProductCard
-                key={product.id}
-                product={product}
-              />
-            ))}
-          </div>
-          <button className="side-arrow"><ChevronLeft/></button>
+        <div className="catalog-products-grid">
+          {filtered.map(product => (
+            <ProductCard
+              key={product.id}
+              product={product}
+            />
+          ))}
         </div>
       </section>
 

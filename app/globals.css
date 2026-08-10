@@ -2670,14 +2670,26 @@ button{cursor:pointer}
   color:var(--navy);
   font-size:18px;
 }
-.catalog-products-grid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:20px;
+.catalog-products-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* موبايل: عمودين */
+  gap: 15px;
+  padding: 0 10px;
 }
-.catalog-products-grid .product-image{
-  height:300px;
-  display:block;
+
+@media (min-width: 768px) {
+  .catalog-products-grid {
+    grid-template-columns: repeat(3, 1fr); /* تابلت */
+    gap: 20px;
+    padding: 0;
+  }
+}
+
+@media (min-width: 1200px) {
+  .catalog-products-grid {
+    grid-template-columns: repeat(5, 1fr); /* شاشات كبيرة */
+    gap: 26px;
+  }
 }
 .no-products{
   min-height:400px;
@@ -2712,7 +2724,7 @@ button{cursor:pointer}
 }
 
 @media(max-width:1150px){
-  .catalog-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* Removed fixed column count to use consolidated responsive logic above */
 }
 
 @media(max-width:800px){
@@ -2772,8 +2784,6 @@ button{cursor:pointer}
 }
 
 @media(max-width:560px){
-  .catalog-products-grid{grid-template-columns:1fr}
-  .catalog-products-grid .product-image{height:360px}
   .sort-select{
     align-items:flex-start;
     flex-direction:column;
