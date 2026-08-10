@@ -51,7 +51,7 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
 
   return (
     <>
-      {/* Top Utility Bar (Desktop & Mobile Unified Style) */}
+      {/* Top Utility Bar (Shared Style) */}
       <div className="top-nav-compact">
         <div className="top-nav-container">
           <div className="top-info-group desktop-only">
@@ -66,8 +66,8 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
           </div>
 
           <div className="top-market-group">
-            <div className="announcement-text">
-              <Truck size={14}/> <span className="desktop-only">شحن لمصر والخليج</span>
+            <div className="announcement-text desktop-only">
+              <Truck size={14}/> <span>شحن لمصر والخليج</span>
             </div>
             <div className="market-selector-mini">
               {market.flag}
@@ -82,13 +82,13 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
       </div>
 
       <header className="main-header">
-        {/* Desktop Navbar Layout */}
-        <div className="desktop-header-layout desktop-only">
+        {/* Desktop Header Content (Single Horizontal Row) */}
+        <div className="desktop-header-content desktop-only">
            <Link href="/" className="logo-link">
               <img src="/images/logo-full.png" alt="زينة النيل" />
            </Link>
 
-           <div className="desktop-search-area">
+           <div className="header-search-box">
              <label className="main-search">
                 <input
                   value={search}
@@ -99,7 +99,7 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
               </label>
            </div>
 
-           <div className="desktop-icons-area">
+           <div className="header-tools-icons">
               {user ? (
                 <div className="nav-dropdown user-dropdown">
                   <button className="user-btn">
@@ -122,16 +122,19 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
               )}
 
               <Link href="/wishlist" className="wishlist-icon">
-                <Heart size={20}/><i>{wishlistCount}</i><span>المفضلة</span>
+                <Heart size={20}/><i>{wishlistCount}</i>
+                <span>المفضلة</span>
               </Link>
+
               <button className="cart-icon" onClick={onCartOpen}>
-                <ShoppingCart size={20}/><i>{count}</i><span>السلة</span>
+                <ShoppingCart size={20}/><i>{count}</i>
+                <span>السلة</span>
               </button>
            </div>
         </div>
 
-        {/* Mobile Navbar Layout */}
-        <div className="mobile-header-layout mobile-only">
+        {/* Mobile Header Content (Compact Row) */}
+        <div className="mobile-header-content mobile-only">
           <button className="mobile-menu-toggle" onClick={() => setIsMenuOpen(true)}>
             <Menu size={28} />
           </button>
@@ -141,26 +144,26 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
           </Link>
 
           <button className="cart-icon" onClick={onCartOpen}>
-            <ShoppingCart size={26}/><i>{count}</i>
+            <ShoppingCart size={24}/><i>{count}</i>
           </button>
         </div>
 
-        {/* Compact Mobile Search Bar */}
-        <div className="mobile-search-area mobile-only">
+        {/* Compact Mobile Search Bar (Appears below logo row on mobile) */}
+        <div className="mobile-search-bar mobile-only">
            <label className="main-search compact">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="ابحث عن منتج..."
               />
-              <button aria-label="بحث"><Search size={20}/></button>
+              <button aria-label="بحث"><Search size={18}/></button>
             </label>
         </div>
       </header>
 
-      {/* Desktop Navigation Links */}
-      <nav className="desktop-links-bar desktop-only">
-        <div className="desktop-links-container">
+      {/* Desktop Navigation Links (Below the main header row) */}
+      <nav className="links-navbar desktop-only">
+        <div className="links-container">
           <Link className={pathname === "/" ? "active" : ""} href="/">الرئيسية</Link>
           <Link className={pathname === "/products" && !category ? "active" : ""} href="/products">جميع المنتجات</Link>
 
@@ -208,11 +211,16 @@ function HeaderContent({ search = "", setSearch = () => {}, onCartOpen = () => {
             <hr/>
             <Link href="/about" onClick={() => setIsMenuOpen(false)}>من نحن</Link>
             <Link href="/contact" onClick={() => setIsMenuOpen(false)}>تواصل معنا</Link>
+            {user ? (
+               <Link href="/profile" onClick={() => setIsMenuOpen(false)}>حسابي</Link>
+            ) : (
+               <Link href="/login" onClick={() => setIsMenuOpen(false)}>تسجيل الدخول</Link>
+            )}
           </nav>
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation (Persistent) */}
+      {/* Mobile Bottom Navigation (Always Visible on Mobile) */}
       <nav className="mobile-bottom-nav mobile-only">
         <Link href="/" className={pathname === "/" ? "active" : ""}>
           <UserRound size={22} />
