@@ -25,61 +25,162 @@ a{text-decoration:none;color:inherit}
 button,input{font:inherit}
 button{cursor:pointer}
 
-.announcement{
-  min-height:35px;
-  background:#00132f;
-  color:#fff;
-  display:flex;
-  justify-content: space-between;
-  align-items:center;
-  padding:0 4%;
-  font-size:12px;
+.top-nav-compact {
+  background: #00152f; /* نفس خلفية الفوتر */
+  color: #d8e0eb;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(211,161,60,0.2);
 }
-.announcement>div{display:flex;align-items:center;gap:7px}
-.announcement>div:nth-child(2){justify-content:center}
-.announcement .currency{justify-content:flex-start}
 
-.contact-strip{
-  min-height: 50px;
-  background: linear-gradient(90deg,#c99632,#e5bd64,#c89431);
+.top-nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 5%;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 4%;
-  color: #07182f;
 }
-.contact-strip > a, .contact-strip .market-selector {
+
+.top-info-group, .top-market-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 20px;
+}
+
+.top-info-group a {
+  color: #d8e0eb;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.top-info-group a:hover {
+  color: var(--gold-light);
+}
+
+.mini-flag {
+  height: 12px;
+  border-radius: 2px;
+}
+
+.announcement-text {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gold-light);
+  font-weight: 700;
+}
+
+.market-selector-mini {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 13px;
 }
-.contact-strip b { font-size: 14px; direction: ltr; }
-.contact-strip>a,.contact-strip .shipping{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:12px;
-  border-left:1px solid rgba(0,0,0,.14);
+
+.market-selector-mini select {
+  background: transparent;
+  border: 0;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
 }
-.contact-strip>a:last-child{border-left:0}
-.contact-strip b{font-size:18px;direction:ltr;display:block}
-.contact-strip small{display:block;font-size:12px;font-weight:600}
+
+.market-selector-mini select option {
+  background: #00152f;
+  color: #fff;
+}
+
+@media (max-width: 760px) {
+  .top-nav-container {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .top-info-group {
+    gap: 15px;
+    width: 100%;
+    justify-content: center;
+  }
+  .top-market-group {
+    width: 100%;
+    justify-content: center;
+  }
+}
 .flag{font-size:20px}
 
-.main-header{
-  min-height: 120px;
-  background:
-    radial-gradient(circle at 80% 30%,rgba(9,63,130,.4),transparent 28%),
-    linear-gradient(135deg,#00132e,#001f47 70%,#00162f);
-  color:#fff;
-  display:grid;
-  grid-template-columns: 320px 1fr 280px;
-  align-items:center;
-  gap:15px;
-  padding:10px 4%;
-  border-bottom:2px solid var(--gold);
+/* Navbar Layout System */
+.desktop-nav-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 30px;
 }
+
+.header-search-wrapper {
+  flex: 1;
+  max-width: 600px;
+}
+
+.header-icons-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.mobile-nav-container {
+  display: none; /* مخفي في الديسكتوب */
+}
+
+@media (max-width: 768px) {
+  .desktop-nav-container { display: none !important; }
+  .mobile-nav-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 10px 0;
+  }
+
+  .logo-link-mobile img {
+    height: 40px;
+    width: auto;
+    mix-blend-mode: screen;
+  }
+
+  .main-header {
+    padding: 5px 15px !important;
+    min-height: auto !important;
+  }
+}
+
+.desktop-menu-bar {
+  background: var(--navy);
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  padding: 12px 0;
+  border-bottom: 3px solid var(--gold);
+}
+
+.desktop-menu-bar a, .desktop-menu-bar span {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.desktop-menu-bar a.active { color: var(--gold); }
 .logo-wrap{
   height:220px;
   display:flex;
@@ -3480,8 +3581,8 @@ button{cursor:pointer}
   overflow:visible !important;
 }
 
-.logo-panel{
-  height: 100px;
+.logo-panel {
+  height: 70px;
   display:flex;
   align-items:center;
   justify-content:flex-start;
@@ -3490,8 +3591,8 @@ button{cursor:pointer}
   border:0;
 }
 
-.logo-panel img{
-  height: 90px;
+.logo-panel img {
+  height: 60px;
   width: auto;
   object-fit: contain;
   mix-blend-mode:screen;
